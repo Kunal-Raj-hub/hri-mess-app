@@ -5,25 +5,24 @@ import google.generativeai as genai
 import os
 
 # --- 1. SETUP & SECURITY ---
-
-# Try to get the key from the Cloud Vault (Secrets)
-# If running on laptop, it might use a placeholder or local environment
+# Fetch the key from the Secure Vault
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 except:
-    GOOGLE_API_KEY = "MISSING_KEY"
+    st.error("⚠️ Key not found in Secrets! Please check Step 1.")
+    GOOGLE_API_KEY = "MISSING"
 
-# Configure AI
+# Configure AI with the Flash Model
 try:
     genai.configure(api_key=GOOGLE_API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
     AI_AVAILABLE = True
-except:
+except Exception as e:
+    st.warning(f"AI Setup Error: {e}")
     AI_AVAILABLE = False
 
 # --- 2. TIMEZONE FIX (INDIA) ---
 def get_india_time():
-    """Returns the current time in India (UTC+5:30)"""
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     india_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
     return utc_now.astimezone(india_tz)
@@ -78,7 +77,7 @@ menu_data = {
     }
 }
 
-# --- 4. LOGIC ENGINE ---
+# --- 4. LOGIC ---
 def parse_smart_menu(menu_item, week_num):
     if not isinstance(menu_item, str) or "/" not in menu_item: return menu_item
     options = menu_item.split("/")
@@ -98,7 +97,7 @@ def parse_smart_menu(menu_item, week_num):
             valid_option.append(option.strip())
     return " + ".join(valid_option) if valid_option else menu_item
 
-# --- 5. APP INTERFACE ---
+# --- 5. UI ---
 st.set_page_config(page_title="HRI Smart Mess", page_icon="🍛")
 
 # Get Time info
@@ -139,15 +138,14 @@ with tab2:
     st.write("Ask questions like: _'Is lunch spicy?'_ or _'Protein in dinner?'_")
     
     if not AI_AVAILABLE:
-        st.warning("⚠️ AI Key not found. Please check Secrets settings.")
+        st.warning("⚠️ AI Setup Failed. Check API Key in Secrets.")
     else:
         user_q = st.text_input("Your Question:")
         if st.button("Ask AI"):
-            with st.spinner("Analyzing nutritional quantum states..."):
+            with st.spinner("Analyzing menu..."):
                 context = f"You are a nutritionist at HRI Physics Institute. Today is {day_name}. Menu: {menu_data.get(day_name)}. User asks: {user_q}"
                 try:
                     response = model.generate_content(context)
                     st.success(response.text)
                 except Exception as e:
                     st.error(f"AI Error: {e}")
-
