@@ -4,13 +4,35 @@ import re
 import google.generativeai as genai
 import os
 
-# ==========================================
-# 🔴 SETUP AREA
-# Paste your "AIza..." key inside the quotes below:
-GOOGLE_API_KEY = "AIzaSyARVlx9KzFeczumMI0GxXws7IQPSNjh6BQ"
-# ==========================================
+# --- 1. SETUP & SECURITY ---
 
-# --- 1. THE DATA (From your uploaded Menu) ---
+# Try to get the key from the Cloud Vault (Secrets)
+# If running on laptop, it might use a placeholder or local environment
+try:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+except:
+    GOOGLE_API_KEY = "MISSING_KEY"
+
+# Configure AI
+try:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+    AI_AVAILABLE = True
+except:
+    AI_AVAILABLE = False
+
+# --- 2. TIMEZONE FIX (INDIA) ---
+def get_india_time():
+    """Returns the current time in India (UTC+5:30)"""
+    utc_now = datetime.datetime.now(datetime.timezone.utc)
+    india_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    return utc_now.astimezone(india_tz)
+
+def get_week_number():
+    today = get_india_time()
+    return (today.day - 1) // 7 + 1
+
+# --- 3. MENU DATA ---
 menu_data = {
     "Monday": {
         "Breakfast": "Methi paratha, Ghugni (1st, 3rd) / Sattu Paratha (2nd, 4th), Chutney",
@@ -56,14 +78,9 @@ menu_data = {
     }
 }
 
-# --- 2. LOGIC FUNCTIONS ---
-def get_week_number():
-    today = datetime.date.today()
-    return (today.day - 1) // 7 + 1
-
+# --- 4. LOGIC ENGINE ---
 def parse_smart_menu(menu_item, week_num):
-    """Filters menu based on week number (e.g., shows only 1st week item)"""
-    if "/" not in menu_item: return menu_item
+    if not isinstance(menu_item, str) or "/" not in menu_item: return menu_item
     options = menu_item.split("/")
     valid_option = []
     for option in options:
@@ -81,48 +98,55 @@ def parse_smart_menu(menu_item, week_num):
             valid_option.append(option.strip())
     return " + ".join(valid_option) if valid_option else menu_item
 
-# --- 3. AI CONFIGURATION ---
-try:
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
-    AI_AVAILABLE = True
-except:
-    AI_AVAILABLE = False
-
-# --- 4. THE UI ---
+# --- 5. APP INTERFACE ---
 st.set_page_config(page_title="HRI Smart Mess", page_icon="🍛")
 
-st.title("🍛 HRI Physics Mess App")
+# Get Time info
+now_india = get_india_time()
 week_num = get_week_number()
-today = datetime.datetime.now()
-day_name = today.strftime("%A")
-st.caption(f"Today is {day_name} (Week {week_num} of Dec)")
+day_name = now_india.strftime("%A")
 
-tab1, tab2 = st.tabs(["📅 Daily Menu", "🤖 AI Chef"])
+st.title("🍛 HRI Physics Mess App")
+st.caption(f"📅 Today is **{day_name}** (Week {week_num}) | 🕒 Time: {now_india.strftime('%I:%M %p')}")
+
+tab1, tab2 = st.tabs(["🍽️ Daily Menu", "🤖 AI Chef"])
 
 with tab1:
     if day_name in menu_data:
         day_menu = menu_data[day_name]
         
-        # Show specific meals
-        meals = ["Breakfast", "Lunch", "Tiffin", "Dinner"]
-        for meal in meals:
+        # Highlight current meal based on time
+        current_hour = now_india.hour
+        if current_hour < 10: active = "Breakfast"
+        elif current_hour < 14: active = "Lunch"
+        elif current_hour < 18: active = "Tiffin"
+        else: active = "Dinner"
+
+        st.info(f"Upcoming/Current Meal: **{active}**")
+
+        for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
             raw = day_menu.get(meal, "Not Available")
             final_item = parse_smart_menu(raw, week_num)
             
-            with st.expander(f"{meal}", expanded=True):
+            # If it's the active meal, keep it open
+            with st.expander(f"{meal}", expanded=(meal==active)):
                 st.markdown(f"### {final_item}")
     else:
         st.error("Menu data not found for today.")
 
 with tab2:
     st.header("Ask the AI Chef")
-    if not AI_AVAILABLE or "PASTE_YOUR" in GOOGLE_API_KEY:
-        st.warning("⚠️ Please paste your API Key in the code to use this feature.")
+    st.write("Ask questions like: _'Is lunch spicy?'_ or _'Protein in dinner?'_")
+    
+    if not AI_AVAILABLE:
+        st.warning("⚠️ AI Key not found. Please check Secrets settings.")
     else:
-        user_q = st.text_input("Ask about today's food (e.g., 'Is lunch spicy?', 'Protein content?')")
+        user_q = st.text_input("Your Question:")
         if st.button("Ask AI"):
-            with st.spinner("Analyzing menu..."):
-                context = f"You are a nutritionist at HRI. Today's menu ({day_name}): {menu_data[day_name]}. User asks: {user_q}"
-                response = model.generate_content(context)
-                st.success(response.text)
+            with st.spinner("Analyzing nutritional quantum states..."):
+                context = f"You are a nutritionist at HRI Physics Institute. Today is {day_name}. Menu: {menu_data.get(day_name)}. User asks: {user_q}"
+                try:
+                    response = model.generate_content(context)
+                    st.success(response.text)
+                except Exception as e:
+                    st.error(f"AI Error: {e}")
