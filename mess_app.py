@@ -16,7 +16,7 @@ except:
 # Configure AI
 try:
     genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     AI_AVAILABLE = True
 except:
     AI_AVAILABLE = False
@@ -150,3 +150,4 @@ with tab2:
                     st.success(response.text)
                 except Exception as e:
                     st.error(f"AI Error: {e}")
+
