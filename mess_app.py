@@ -1,35 +1,19 @@
 import streamlit as st
 import datetime
 import re
-import google.generativeai as genai
-import os
 
-# --- 1. SETUP & SECURITY ---
-# Fetch the key from the Secure Vault
-try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-except:
-    st.error("⚠️ Key not found in Secrets! Please check Step 1.")
-    GOOGLE_API_KEY = "MISSING"
+# --- 1. APP CONFIG ---
+st.set_page_config(page_title="HRI Smart Mess", page_icon="🍛")
 
-# Configure AI with the Flash Model
-try:
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    AI_AVAILABLE = True
-except Exception as e:
-    st.warning(f"AI Setup Error: {e}")
-    AI_AVAILABLE = False
-
-# --- 2. TIMEZONE FIX (INDIA) ---
+# --- 2. TIME LOGIC ---
 def get_india_time():
+    """Returns the current time in India (UTC+5:30)"""
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     india_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
     return utc_now.astimezone(india_tz)
 
-def get_week_number():
-    today = get_india_time()
-    return (today.day - 1) // 7 + 1
+def get_week_number(date_obj):
+    return (date_obj.day - 1) // 7 + 1
 
 # --- 3. MENU DATA ---
 menu_data = {
@@ -77,7 +61,7 @@ menu_data = {
     }
 }
 
-# --- 4. LOGIC ---
+# --- 4. DATA PARSER ---
 def parse_smart_menu(menu_item, week_num):
     if not isinstance(menu_item, str) or "/" not in menu_item: return menu_item
     options = menu_item.split("/")
@@ -97,55 +81,131 @@ def parse_smart_menu(menu_item, week_num):
             valid_option.append(option.strip())
     return " + ".join(valid_option) if valid_option else menu_item
 
-# --- 5. UI ---
-st.set_page_config(page_title="HRI Smart Mess", page_icon="🍛")
-
-# Get Time info
-now_india = get_india_time()
-week_num = get_week_number()
-day_name = now_india.strftime("%A")
-
-st.title("🍛 HRI Physics Mess App")
-st.caption(f"📅 Today is **{day_name}** (Week {week_num}) | 🕒 Time: {now_india.strftime('%I:%M %p')}")
-
-tab1, tab2 = st.tabs(["🍽️ Daily Menu", "🤖 AI Chef"])
-
-with tab1:
+def display_menu_items(day_name, week_num, highlight=False, time_obj=None):
     if day_name in menu_data:
         day_menu = menu_data[day_name]
         
-        # Highlight current meal based on time
-        current_hour = now_india.hour
-        if current_hour < 10: active = "Breakfast"
-        elif current_hour < 14: active = "Lunch"
-        elif current_hour < 18: active = "Tiffin"
-        else: active = "Dinner"
-
-        st.info(f"Upcoming/Current Meal: **{active}**")
+        # Highlight Logic
+        active = None
+        if highlight and time_obj:
+            current_hour = time_obj.hour
+            if current_hour < 10: active = "Breakfast"
+            elif current_hour < 14: active = "Lunch"
+            elif current_hour < 18: active = "Tiffin"
+            else: active = "Dinner"
+            st.info(f"⚡ Currently serving: **{active}**")
 
         for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
             raw = day_menu.get(meal, "Not Available")
             final_item = parse_smart_menu(raw, week_num)
             
-            # If it's the active meal, keep it open
-            with st.expander(f"{meal}", expanded=(meal==active)):
-                st.markdown(f"### {final_item}")
+            # If highlighting, open the active meal
+            is_expanded = (meal == active) if highlight else False
+            
+            with st.expander(f"{meal}", expanded=is_expanded):
+                st.markdown(f"**{final_item}**")
     else:
-        st.error("Menu data not found for today.")
+        st.error("Menu unavailable.")
 
+# --- 5. UI LAYOUT ---
+now_india = get_india_time()
+today_name = now_india.strftime("%A")
+today_week = get_week_number(now_india)
+date_str = now_india.strftime("%d %b %Y")
+
+# Calculate Tomorrow
+tomorrow_date = now_india + datetime.timedelta(days=1)
+tomorrow_name = tomorrow_date.strftime("%A")
+tomorrow_week = get_week_number(tomorrow_date)
+tomorrow_date_str = tomorrow_date.strftime("%d %b")
+
+# --- SIDEBAR (VISITOR COUNTER) ---
+with st.sidebar:
+    st.header("HRI Mess App")
+    st.markdown("Created by Kunal Raj")
+    st.divider()
+    # This badge auto-counts unique visitors to your GitHub repo link
+    st.markdown("### 👥 Visitor Count")
+    st.markdown("![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FKunal-Raj-hub%2Fhri-mess-app&label=TOTAL+VIEWS&countColor=%23263759&style=flat)")
+    st.caption("Live counter")
+
+# --- MAIN PAGE ---
+st.title("🍛 HRI Mess App")
+st.caption(f"📅 {date_str} | **{today_name}** (Week {today_week})")
+
+# TABS
+tab1, tab2, tab3 = st.tabs(["🍽️ Today", "🔮 Tomorrow", "🗳️ Vote & Report"])
+
+# TAB 1: TODAY
+with tab1:
+    display_menu_items(today_name, today_week, highlight=True, time_obj=now_india)
+
+# TAB 2: TOMORROW
 with tab2:
-    st.header("Ask the AI Chef")
-    st.write("Ask questions like: _'Is lunch spicy?'_ or _'Protein in dinner?'_")
+    st.header(f"Tomorrow: {tomorrow_name}")
+    st.caption(f"📅 {tomorrow_date_str} | Week {tomorrow_week}")
+    st.info("Plan your meals for tomorrow 👇")
+    display_menu_items(tomorrow_name, tomorrow_week, highlight=False)
+
+# TAB 3: VOTING & FEEDBACK
+with tab3:
+    st.header("🗳️ Feedback Dashboard")
+    st.write("Help improve the Mess by reporting issues.")
     
-    if not AI_AVAILABLE:
-        st.warning("⚠️ AI Setup Failed. Check API Key in Secrets.")
+    st.divider()
+    
+    # 1. Star Rating
+    st.subheader("1. Rate Today's Food")
+    rating = st.slider("Select Stars:", 1, 5, 3)
+    
+    if rating == 5:
+        st.success("Excellent! ⭐⭐⭐⭐⭐")
+    elif rating == 1:
+        st.error("Terrible 😞")
     else:
-        user_q = st.text_input("Your Question:")
-        if st.button("Ask AI"):
-            with st.spinner("Analyzing menu..."):
-                context = f"You are a nutritionist at HRI Physics Institute. Today is {day_name}. Menu: {menu_data.get(day_name)}. User asks: {user_q}"
-                try:
-                    response = model.generate_content(context)
-                    st.success(response.text)
-                except Exception as e:
-                    st.error(f"AI Error: {e}")
+        st.info(f"You rated it {rating}/5")
+
+    st.divider()
+
+    # 2. What needs improvement?
+    st.subheader("2. What needs improvement?")
+    st.caption("Tick the meals that were not up to the mark:")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        issue_b = st.checkbox("Breakfast")
+        issue_l = st.checkbox("Lunch")
+    with col2:
+        issue_t = st.checkbox("Tiffin")
+        issue_d = st.checkbox("Dinner")
+        
+    # Build list of issues
+    issues = []
+    if issue_b: issues.append("Breakfast")
+    if issue_l: issues.append("Lunch")
+    if issue_t: issues.append("Tiffin")
+    if issue_d: issues.append("Dinner")
+    
+    issues_str = ", ".join(issues) if issues else "None"
+
+    st.divider()
+
+    # 3. Comment
+    st.subheader("3. Specific Complaint")
+    comment = st.text_area("Write details (e.g., 'Rice was undercooked', 'Too much oil')")
+
+    # 4. Action Button
+    st.markdown("### 🚀 Take Action")
+    if st.button("📝 Generate WhatsApp Report"):
+        # Format the message for WhatsApp
+        report_text = (
+            f"*HRI Mess Feedback ({date_str})*\n"
+            f"-----------------------------\n"
+            f"⭐ Rating: {rating}/5\n"
+            f"⚠️ Needs Improvement: {issues_str}\n"
+            f"💬 Details: {comment}\n"
+            f"-----------------------------"
+        )
+        
+        st.code(report_text, language="markdown")
+        st.success("✅ Report Generated! Copy the text above and paste it in the Mess Group.")
