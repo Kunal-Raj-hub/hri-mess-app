@@ -5,8 +5,7 @@ import re
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="HRI Smart Mess", page_icon="🍛")
 
-# --- 2. GLOBAL VOTE MANAGER (The "Server Memory") ---
-# This creates a shared memory that stays alive across different users
+# --- 2. VOTE MANAGER (Server Memory) ---
 @st.cache_resource
 class VoteManager:
     def __init__(self):
@@ -23,23 +22,23 @@ class VoteManager:
     def get_count(self, meal):
         return self.votes[meal]
 
-# Initialize the manager
 vote_manager = VoteManager()
-
-# SET THE THRESHOLD HERE (Change to 40 later, keeping 5 for you to test easily)
 ALERT_THRESHOLD = 40 
 
-# --- 3. BACKGROUND IMAGE ---
+# --- 3. PRIVACY & DESIGN ---
 bg_url = "https://images.unsplash.com/photo-1543353071-873f1753ade2?q=80&w=2070&auto=format&fit=crop"
 
 st.markdown(
     f"""
     <style>
+    /* 1. BACKGROUND */
     .stApp {{
         background-image: url("{bg_url}");
         background-attachment: fixed;
         background-size: cover;
     }}
+    
+    /* 2. TEXT VISIBILITY */
     .stExpander, .stTextInput, .stMarkdown, .stTab, .stHeader, .stCaption, .stInfo, .stSuccess, .stWarning, .stError {{
         background-color: rgba(0, 0, 0, 0.75);
         border-radius: 10px;
@@ -48,7 +47,13 @@ st.markdown(
     h1, h2, h3, p, div, label, span, th, td {{
         color: white !important;
     }}
-    /* High Alert Animation */
+    
+    /* 3. PRIVACY SHIELD (Hide Code & Menu) */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+    
+    /* 4. ALERT ANIMATION */
     @keyframes blink {{
         0% {{ opacity: 1; }}
         50% {{ opacity: 0.5; }}
@@ -69,7 +74,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 4. TIME CALCULATION ---
+# --- 4. TIME LOGIC ---
 utc_now = datetime.datetime.now(datetime.timezone.utc)
 india_tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 now_india = utc_now.astimezone(india_tz)
@@ -129,17 +134,15 @@ menu_data = {
     }
 }
 
-# --- 6. CHECK FOR HIGH ALERTS ---
-# This runs every time the app loads to check if any meal crossed the threshold
+# --- 6. CHECK ALERTS ---
 alert_msg = None
 for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
     if vote_manager.get_count(meal) >= ALERT_THRESHOLD:
-        alert_msg = f"⚠️ HIGH ALERT: {meal} has received {vote_manager.get_count(meal)} complaints! Committee has been notified."
+        alert_msg = f"⚠️ HIGH ALERT: {meal} has received {vote_manager.get_count(meal)} complaints! Committee notified."
 
-# --- 7. MAIN APP UI ---
+# --- 7. UI LAYOUT ---
 st.title("🍛 HRI Mess App")
 
-# SHOW ALERT IF ACTIVE
 if alert_msg:
     st.markdown(f'<div class="critical-alert">{alert_msg}</div>', unsafe_allow_html=True)
 
@@ -164,7 +167,6 @@ with tab1:
 
         for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
             raw_item = menu_data[today_name].get(meal, "Not Available")
-            # Cleaning Logic
             clean_item = raw_item
             if "/" in raw_item:
                 parts = raw_item.split("/")
@@ -177,7 +179,6 @@ with tab1:
                         valid_parts.append(part.strip())
                 if valid_parts:
                     clean_item = " + ".join(valid_parts)
-
             with st.expander(f"{meal}", expanded=(meal == active_meal)):
                 st.markdown(f"**{clean_item}**")
     else:
@@ -190,7 +191,6 @@ with tab2:
     if tomorrow_name in menu_data:
         for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
             raw_item = menu_data[tomorrow_name].get(meal, "Not Available")
-            # Cleaning Logic
             clean_item = raw_item
             if "/" in raw_item:
                 parts = raw_item.split("/")
@@ -215,33 +215,30 @@ with tab3:
     st.markdown("[➕ **Tiffin**](https://www.google.com/calendar/render?action=TEMPLATE&text=HRI+Tiffin&dates=20260101T110000Z/20260101T120000Z&recur=RRULE:FREQ=DAILY)")
     st.markdown("[➕ **Dinner**](https://www.google.com/calendar/render?action=TEMPLATE&text=HRI+Dinner&dates=20260101T140000Z/20260101T150000Z&recur=RRULE:FREQ=DAILY)")
 
-# TAB 4: SMART ISSUE TRACKER (THE NEW LOGIC)
+# TAB 4: SMART REPORT
 with tab4:
     st.header("⚠️ Report Bad Food")
-    st.write("Is the food bad today? Vote below. If votes cross 40, an alert is sent to the Committee.")
+    st.write("Is the food bad today? Vote below. If votes cross 40, an alert is sent.")
     
-    # 1. Check if user already voted in this session
     if 'has_voted' not in st.session_state:
         st.session_state.has_voted = False
 
     if st.session_state.has_voted:
-        st.info("✅ Your vote has been recorded. Thank you for helping improve the Mess.")
+        st.info("✅ Your vote has been recorded. Thank you.")
         st.divider()
         st.write("Current Complaint Counts:")
     else:
         st.write("Select the meal that needs improvement:")
-        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🚩 Breakfast Bad"):
                 vote_manager.add_vote("Breakfast")
                 st.session_state.has_voted = True
-                st.rerun() # Refresh to show updated data
+                st.rerun()
             if st.button("🚩 Lunch Bad"):
                 vote_manager.add_vote("Lunch")
                 st.session_state.has_voted = True
                 st.rerun()
-
         with col2:
             if st.button("🚩 Tiffin Bad"):
                 vote_manager.add_vote("Tiffin")
@@ -252,22 +249,14 @@ with tab4:
                 st.session_state.has_voted = True
                 st.rerun()
 
-    # Show Live Stats
     st.subheader("📊 Live Complaint Counter")
-    
-    # We use a progress bar to show how close we are to 40
     for meal in ["Breakfast", "Lunch", "Tiffin", "Dinner"]:
         count = vote_manager.get_count(meal)
         percentage = min(count / ALERT_THRESHOLD, 1.0)
-        
         st.write(f"**{meal}:** {count} votes")
-        
-        # Color changes based on severity
         if count >= ALERT_THRESHOLD:
-            st.progress(percentage, text="CRITICAL LEVEL REACHED")
+            st.progress(percentage, text="CRITICAL LEVEL")
         elif count > (ALERT_THRESHOLD / 2):
              st.progress(percentage, text="Warning Level")
         else:
              st.progress(percentage)
-
-    st.caption(f"Alert triggers at {ALERT_THRESHOLD} votes.")
